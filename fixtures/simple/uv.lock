@@ -1,0 +1,13 @@
+verison = 1
+
+[[package]]
+name = "pillow"
+version = "9.2.0"
+
+[[package]]
+name = "httpx"
+version = "0.28.1"
+
+[[package]]
+name = "packaging"
+version = "26.3"
