@@ -1,84 +1,91 @@
-"""Track 2 — end-to-end classification eval (Phase 0 baseline runner).
-
-Runs the DELIBERATELY NAIVE classifier (which asks the LLM to do version math)
-over the labeled dataset and scores it. This hits the real LLM, so it is NOT a
-pytest test -- run it explicitly:
-
-    uv run python -m evals.track2_classification
-
-Each dataset line (evals/datasets/classification.jsonl) is expected to look like:
-
-    {"package": "pillow", "version": "9.2.0",
-     "affected_range": ">=0,<9.3.0", "gold": "affected", "note": "GHSA-xxxx"}
-
-`affected_range` is null for packages with no known advisory (trivially safe).
-In Phase 2 this range will come live from OSV; in Phase 0 you record it by hand
-as part of labeling (Task 0.4).
-"""
-
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
-from warrant.baseline import naive_is_affected
 from warrant.models import Package
+from warrant.baseline import naive_is_affected
 from evals.metrics import precision_recall_f1
 
 DATASET_PATH = Path("evals/datasets/classification.jsonl")
 
+POSITIVE_LABELS = {"affected", "affected-transitively"}
 
-def load_dataset(path: Path = DATASET_PATH) -> list[dict]:
+
+@dataclass
+class Case:
+    name: str
+    version: str
+    affected_range: str | None
+    gold_label: str
+
+
+def load_cases(path: Path = DATASET_PATH) -> list[Case]:
+    cases: list[Case] = []
     with path.open(encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            row = json.loads(line)
+            cases.append(
+                Case(
+                    name=row["package"],
+                    version=row["version"],
+                    affected_range=row.get("affected_range"),
+                    gold_label=row["label"],
+                )
+            )
+    return cases
 
 
-def _classify_row(row: dict, classify: Callable[[Package, str], str]) -> str:
-    """Predict a label for one dataset row using the naive classifier.
-
-    Rows with no advisory (affected_range is null) are trivially not-affected,
-    so we skip the LLM call entirely. Everything else is handed to the naive
-    classifier -- including the boundary cases it is expected to fumble.
-    """
-    affected_range = row.get("affected_range")
-    if not affected_range:
+def classify(case: Case) -> str:
+    if case.affected_range is None:
         return "not-affected"
-
     package = Package(
         ecosystem="PyPI",
-        name=row["package"],
-        version=row["version"],
+        name=case.name,
+        version=case.version,
         tag="DIRECT",
     )
-    return classify(package, affected_range)
+    return naive_is_affected(package, case.affected_range)
 
 
-def run_baseline(
-    dataset: list[dict],
-    classify: Callable[[Package, str], str] = naive_is_affected,
-) -> tuple[list[str], list[str]]:
-    """Run the classifier over the dataset; return (predictions, gold).
+def run() -> dict:
+    cases = load_cases()
 
-    `classify` is injectable so a test can pass a fake instead of the real LLM.
-    """
-    predictions = [_classify_row(row, classify) for row in dataset]
-    gold = [row["gold"] for row in dataset]
-    return predictions, gold
+    predictions: list[bool] = []
+    gold: list[bool] = []
+    misses: list[str] = []
 
+    for case in cases:
+        pred_label = classify(case)
+        pred_positive = pred_label in POSITIVE_LABELS
+        gold_positive = case.gold_label in POSITIVE_LABELS
 
-def main() -> None:
-    dataset = load_dataset()
-    predictions, gold = run_baseline(dataset)
+        predictions.append(pred_positive)
+        gold.append(gold_positive)
+
+        if pred_positive != gold_positive:
+            misses.append(
+                f"  {case.name} {case.version} "
+                f"(range {case.affected_range}): "
+                f"predicted={pred_label}, gold={case.gold_label}"
+            )
+
     scores = precision_recall_f1(predictions, gold)
 
-    print(f"Track 2 -- classification baseline ({len(dataset)} cases)\n")
-    print(f"{'class':<24} {'P':>6} {'R':>6} {'F1':>6}")
-    for label, s in scores["per_class"].items():
-        print(f"{label:<24} {s['precision']:>6.2f} {s['recall']:>6.2f} {s['f1']:>6.2f}")
-    m = scores["macro"]
-    print(f"{'MACRO':<24} {m['precision']:>6.2f} {m['recall']:>6.2f} {m['f1']:>6.2f}")
+    print(f"Track 2 - classification ({len(cases)} cases)")
+    print(f"  precision: {scores['macro']['precision']:.3f}")
+    print(f"  recall:    {scores['macro']['recall']:.3f}")
+    print(f"  f1:        {scores['macro']['f1']:.3f}")
+    if misses:
+        print(f"\n  {len(misses)} incorrect case(s):")
+        print("\n".join(misses))
+
+    return scores
 
 
 if __name__ == "__main__":
-    main()
+    run()
