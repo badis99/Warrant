@@ -282,15 +282,17 @@ The eval harness is built **before** any component is improved. A deliberately n
 
 **The killer artifact** — the naive baseline that asks the LLM directly *"is `1.4.5` affected by `>=1.2.0 <1.4.5`?"* getting boundary cases wrong a meaningful fraction of the time, then the deterministic resolver at ~100%, with RAG lifting reachability accuracy:
 
-| Component added | Boundary acc. | recall@5 | Reachability acc. | F1 |
+| Component added | Boundary acc. | Retrieval MRR | Reachability acc. | F1 |
 | --- | --- | --- | --- | --- |
-| Baseline (LLM version check + plain vector RAG) | _tbd_ | _tbd_ | _tbd_ | _tbd_ |
+| Baseline (LLM version check + plain vector RAG) | _tbd_ | **0.885** | _tbd_ | _tbd_ |
 | + Deterministic PEP 440 resolver | _tbd_ | — | — | _tbd_ |
 | + Full fact layer (OSV + transitive graph) | — | — | — | _tbd_ |
 | + Hybrid retrieval + rerank | — | _tbd_ | _tbd_ | _tbd_ |
 | + Reachability reasoning | — | — | _tbd_ | _tbd_ |
 
 *(Numbers filled in as each phase lands — see the [Roadmap](#roadmap).)*
+
+> **On the retrieval metric:** the column tracks **MRR** rather than recall@5, because on the current bounded corpus recall@5 saturates at 1.000 (the gold chunk is almost always somewhere in the top 5) and can't show improvement. MRR is rank-sensitive: the naive dense baseline scores **0.885** because it confuses a package's *advisory* with its *changelog* (near-identical wording), landing the gold chunk at rank 2 for several queries — exactly the weakness the Phase 3 hybrid BM25 pass targets. Baseline recall@1 is 0.769. Reproduce with `uv run python -m evals.track1_retrieval`.
 
 ---
 

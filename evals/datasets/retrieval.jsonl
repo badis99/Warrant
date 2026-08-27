@@ -1,0 +1,13 @@
+{"id": "q-pyyaml-rce",     "query": "PyYAML arbitrary code execution when loading untrusted YAML input", "gold_chunk_id": "adv-pyyaml-cve-2020-14343", "category": "direct"}
+{"id": "q-requests-proxy",  "query": "requests leaks the Proxy-Authorization header when redirected to another host", "gold_chunk_id": "adv-requests-cve-2023-32681", "category": "direct"}
+{"id": "q-urllib3-body",    "query": "urllib3 still sends the request body after a redirect changes the method to GET", "gold_chunk_id": "adv-urllib3-cve-2023-45803", "category": "direct"}
+{"id": "q-jinja2-xss",      "query": "Jinja2 xmlattr filter allows HTML attribute injection and cross-site scripting", "gold_chunk_id": "adv-jinja2-cve-2024-34064", "category": "direct"}
+{"id": "q-certifi-root",    "query": "certifi trusts the compromised e-Tugra root certificate authority", "gold_chunk_id": "adv-certifi-cve-2023-37920", "category": "direct"}
+{"id": "q-setuptools-redos","query": "setuptools regular expression denial of service in the package index parser", "gold_chunk_id": "adv-setuptools-cve-2022-40897", "category": "direct"}
+{"id": "q-pillow-open",     "query": "Pillow denial of service when opening a crafted image with Image.open", "gold_chunk_id": "adv-pillow-cve-2022-45198", "category": "direct"}
+{"id": "q-oauthlib-close",  "query": "requests OAuth authentication and request signing library", "gold_chunk_id": "doc-requests-oauthlib", "category": "close_name"}
+{"id": "q-requests-fixver", "query": "which version of requests fixed the proxy authorization header leak on redirect", "gold_chunk_id": "chlog-requests-2.31.0", "category": "changelog"}
+{"id": "q-urllib3-fixver",  "query": "urllib3 changelog entry that fixed resending the request body on redirect", "gold_chunk_id": "chlog-urllib3-1.26.18", "category": "changelog"}
+{"id": "q-jinja2-fixver",   "query": "Jinja2 release that fixed the xmlattr attribute injection vulnerability", "gold_chunk_id": "chlog-jinja2-3.1.4", "category": "changelog"}
+{"id": "q-pyyaml-safe",     "query": "PyYAML version that made load default to the safe FullLoader", "gold_chunk_id": "chlog-pyyaml-5.4", "category": "changelog"}
+{"id": "q-certifi-fixver",  "query": "certifi update that removed the e-Tugra certificate from the bundle", "gold_chunk_id": "chlog-certifi-2023.07.22", "category": "changelog"}
