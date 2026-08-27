@@ -1,5 +1,4 @@
 from warrant.llm import complete
-from warrant.models import Package
 
 # This hands version-range math to the LLM, which the architectural rule
 # forbids. It exists only as the baseline that Phase 1's deterministic
@@ -22,5 +21,3 @@ def _parse_verdict(reply: str) -> str:
     if "affected" in text:
         return "affected"
     return "unknown"
-
-print(naive_is_affected(Package(ecosystem='PyPI', name='pillow', version='9.2.0', tag='DIRECT'),">= 1.2.0 <9.2.0"))
