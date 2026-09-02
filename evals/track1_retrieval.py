@@ -51,17 +51,14 @@ def load_queries(path: Path = DATASET_PATH) -> list[Query]:
     return queries
 
 
-def run() -> dict:
+def run(index, name: str) -> dict:
+    """Score any retriever exposing .retrieve(query, k) -> list[Chunk]."""
     corpus = load_corpus(CORPUS_PATH)
     queries = load_queries()
-
-    # Build the index once, then reuse it for every query.
-    index = NaiveIndex(corpus, embed=_default_embed)
     depth = len(corpus)  # retrieve the full ranking; metrics apply the cutoff.
 
     per_query: list[tuple[list[str], str]] = []
     by_category: dict[str, list[tuple[list[str], str]]] = defaultdict(list)
-    misses: list[str] = []
 
     for q in queries:
         ranked_ids = [c.id for c in index.retrieve(q.text, k=depth)]
@@ -69,38 +66,28 @@ def run() -> dict:
         per_query.append(pair)
         by_category[q.category].append(pair)
 
-        top_k = ranked_ids[:K]
-        if q.gold_chunk_id not in top_k:
-            misses.append(
-                f"  [{q.category}] {q.id}: gold={q.gold_chunk_id} "
-                f"not in top {K}; got {top_k[:3]}..."
-            )
-
     overall = aggregate(per_query, k=K)
 
-    print(f"Track 1 - retrieval, naive dense baseline ({len(queries)} queries)")
-    # recall at several cutoffs: on a small corpus recall@5 saturates, so
-    # recall@1 (is the gold chunk the very top hit?) is the discriminating one.
+    print(f"Track 1 - retrieval: {name} ({len(queries)} queries)")
     for cutoff in (1, 3, 5):
         scores = aggregate(per_query, k=cutoff)
         print(f"  recall@{cutoff}: {scores[f'recall@{cutoff}']:.3f}")
     print(f"  MRR:      {overall['mrr']:.3f}")
     print(f"  nDCG@{K}:  {overall[f'ndcg@{K}']:.3f}")
 
-    # Per-category MRR (rank-sensitive) exposes where ranking is weak; recall@5
-    # would read 1.000 everywhere and hide it.
-    print("\n  MRR by category:")
+    print("  MRR by category:")
     for category in sorted(by_category):
         cat_scores = aggregate(by_category[category], k=K)
         n = len(by_category[category])
         print(f"    {category:<12} {cat_scores['mrr']:.3f}  (n={n})")
 
-    if misses:
-        print(f"\n  {len(misses)} query(ies) missed the gold chunk in top {K}:")
-        print("\n".join(misses))
-
     return overall
 
 
 if __name__ == "__main__":
-    run()
+    from warrant.rag.retrieve import HybridIndex
+
+    corpus = load_corpus(CORPUS_PATH)
+    run(NaiveIndex(corpus, embed=_default_embed), "naive dense baseline")
+    print()
+    run(HybridIndex(corpus, embed=_default_embed), "hybrid (dense + BM25, RRF)")
