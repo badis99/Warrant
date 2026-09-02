@@ -13,11 +13,13 @@ Run:  uv run python -m evals.track2_classification              # deterministic
 from __future__ import annotations
 
 import json
+import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from core.resolve import resolve_graph
 from core.version_match import is_version_affected
 from evals.metrics import precision_recall_f1
 
@@ -33,7 +35,26 @@ class Case:
     version: str
     gold_label: str
     category: str
+    lockfile: str
     osv_ranges: list = field(default_factory=list)
+
+
+# Cache resolved graphs per lockfile so we parse each one once.
+_GRAPH_TAGS: dict[str, dict[str, str]] = {}
+
+
+def _graph_tag(lockfile: str, name: str) -> str:
+    """Tag (SELF/DIRECT/INDIRECT) of `name` in `lockfile`; DIRECT if not found."""
+    if lockfile not in _GRAPH_TAGS:
+        try:
+            packages = resolve_graph(lockfile)
+            _GRAPH_TAGS[lockfile] = {
+                re.sub(r"[-_.]+", "-", p.name.lower()): p.tag for p in packages
+            }
+        except FileNotFoundError:
+            _GRAPH_TAGS[lockfile] = {}
+    key = re.sub(r"[-_.]+", "-", name.lower())
+    return _GRAPH_TAGS[lockfile].get(key, "DIRECT")
 
 
 def load_cases(path: Path = DATASET_PATH) -> list[Case]:
@@ -51,6 +72,7 @@ def load_cases(path: Path = DATASET_PATH) -> list[Case]:
                     version=row["version"],
                     gold_label=row["label"],
                     category=row["category"],
+                    lockfile=row["lockfile"],
                     osv_ranges=row.get("osv_ranges", []),
                 )
             )
@@ -82,10 +104,14 @@ def render_range_text(osv_ranges: list) -> str | None:
 
 
 def classify_deterministic(case: Case) -> str:
-    """PEP 440 range math. No LLM. Binary affected/not-affected."""
-    if is_version_affected(case.version, case.osv_ranges):
-        return "affected"
-    return "not-affected"
+    """PEP 440 range math (Phase 1) + graph position (Phase 2). No LLM.
+
+    Emits the 3-way label: not-affected / affected / affected-transitively.
+    """
+    if not is_version_affected(case.version, case.osv_ranges):
+        return "not-affected"
+    tag = _graph_tag(case.lockfile, case.name)
+    return "affected-transitively" if tag == "INDIRECT" else "affected"
 
 
 def classify_naive(case: Case) -> str:
@@ -109,6 +135,7 @@ def run(classifier: Callable[[Case], str], name: str) -> dict:
     gold: list[bool] = []
     misses: list[str] = []
     boundary_correct = boundary_total = 0
+    exact_correct = 0
 
     for case in cases:
         pred_label = classifier(case)
@@ -119,11 +146,14 @@ def run(classifier: Callable[[Case], str], name: str) -> dict:
         predictions.append(pred_positive)
         gold.append(gold_positive)
 
+        if pred_label == case.gold_label:
+            exact_correct += 1
+
         if case.category == "boundary_safe":
             boundary_total += 1
             boundary_correct += int(correct)
 
-        if not correct:
+        if pred_label != case.gold_label:
             misses.append(
                 f"  [{case.category}] {case.id} ({case.version}): "
                 f"predicted={pred_label}, gold={case.gold_label}"
@@ -131,18 +161,21 @@ def run(classifier: Callable[[Case], str], name: str) -> dict:
 
     scores = precision_recall_f1(predictions, gold)
     boundary_acc = boundary_correct / boundary_total if boundary_total else 0.0
+    exact_acc = exact_correct / len(cases) if cases else 0.0
 
     print(f"Track 2 - classification: {name} ({len(cases)} cases)")
-    print(f"  boundary accuracy: {boundary_acc:.3f}  "
+    print(f"  exact 3-way accuracy: {exact_acc:.3f}  "
+          f"({exact_correct}/{len(cases)})")
+    print(f"  boundary accuracy:    {boundary_acc:.3f}  "
           f"({boundary_correct}/{boundary_total} boundary_safe cases)")
-    print(f"  precision: {scores['macro']['precision']:.3f}")
-    print(f"  recall:    {scores['macro']['recall']:.3f}")
-    print(f"  f1:        {scores['macro']['f1']:.3f}")
+    print(f"  precision (binary):   {scores['macro']['precision']:.3f}")
+    print(f"  recall (binary):      {scores['macro']['recall']:.3f}")
+    print(f"  f1 (binary):          {scores['macro']['f1']:.3f}")
     if misses:
-        print(f"\n  {len(misses)} incorrect case(s):")
+        print(f"\n  {len(misses)} case(s) with a non-exact label:")
         print("\n".join(misses))
 
-    return {"scores": scores, "boundary_acc": boundary_acc}
+    return {"scores": scores, "boundary_acc": boundary_acc, "exact_acc": exact_acc}
 
 
 if __name__ == "__main__":

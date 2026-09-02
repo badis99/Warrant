@@ -1,0 +1,32 @@
+{
+  "nodes": [
+    {
+      "versionKey": {
+        "system": "PYPI",
+        "name": "jinja2",
+        "version": "3.1.4"
+      },
+      "bundled": false,
+      "relation": "SELF",
+      "errors": []
+    },
+    {
+      "versionKey": {
+        "system": "PYPI",
+        "name": "markupsafe",
+        "version": "3.0.3"
+      },
+      "bundled": false,
+      "relation": "DIRECT",
+      "errors": []
+    }
+  ],
+  "edges": [
+    {
+      "fromNode": 0,
+      "toNode": 1,
+      "requirement": ">=2.0"
+    }
+  ],
+  "error": ""
+}
