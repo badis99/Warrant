@@ -286,13 +286,15 @@ The eval harness is built **before** any component is improved. A deliberately n
 | --- | --- | --- | --- | --- |
 | Baseline (LLM version check + plain vector RAG) | 1.000 | **0.885** | _tbd_ | **0.360** |
 | + Deterministic PEP 440 resolver | 1.000 | — | — | **1.000** |
-| + Full fact layer (OSV + transitive graph) | — | — | — | _tbd_ |
+| + Full fact layer (OSV + transitive graph) | — | — | — | 1.000 |
 | + Hybrid retrieval + rerank | — | _tbd_ | _tbd_ | _tbd_ |
 | + Reachability reasoning | — | — | _tbd_ | _tbd_ |
 
 *(Numbers filled in as each phase lands — see the [Roadmap](#roadmap).)*
 
 > **On the version-math result (Phase 1):** the naive baseline, which asks the LLM to decide affectedness, scores **F1 0.360** — it systematically *under-flags*, missing 7 of 8 genuinely-affected packages (recall 0.500). The deterministic PEP 440 resolver scores **F1 1.000**. Note that *boundary accuracy is 1.000 for both*: the LLM "passes" the exact-fixed-version cases only because it defaults toward "not-affected", so a metric that rewards saying-safe is gamed by its own failure — F1/recall is what reveals it. In security, silently missing real vulnerabilities is the worst outcome, and it is exactly what removing the LLM from version math eliminates. Single run, temperature 0; reproduce with `uv run python -m evals.track2_classification [naive]`.
+
+> **On the fact layer (Phase 2):** advisory ranges are now fetched from **live OSV.dev** (recorded as fixtures for reproducible tests) instead of hand-written, and the transitive dependency graph is reconstructed from the lockfile. Binary F1 stays 1.000, but the graph lifts **exact 3-way accuracy** (not-affected / affected / affected-transitively) from **0.938 → 1.000**: the one indirect dependency is now labeled `affected-transitively` rather than merely `affected`. The version verdict still comes from our own PEP 440 resolver — OSV supplies facts, not judgments.
 
 > **On the retrieval metric:** the column tracks **MRR** rather than recall@5, because on the current bounded corpus recall@5 saturates at 1.000 (the gold chunk is almost always somewhere in the top 5) and can't show improvement. MRR is rank-sensitive: the naive dense baseline scores **0.885** because it confuses a package's *advisory* with its *changelog* (near-identical wording), landing the gold chunk at rank 2 for several queries — exactly the weakness the Phase 3 hybrid BM25 pass targets. Baseline recall@1 is 0.769. Reproduce with `uv run python -m evals.track1_retrieval`.
 
@@ -378,7 +380,7 @@ Each phase ends by re-measuring and adding a row to the before/after table.
 
 - [x] **Phase 0** — Baseline + eval harness (Tracks 1 & 2); deliberately naive version check + plain vector RAG.
 - [x] **Phase 1** — Deterministic PEP 440 resolver. *(The killer artifact.)* Baseline F1 0.360 → 1.000.
-- [ ] **Phase 2** — Full fact layer: OSV client + transitive graph + deps.dev fallback.
+- [x] **Phase 2** — Full fact layer: OSV client + transitive graph + deps.dev fallback. Exact 3-way accuracy 0.938 → 1.000.
 - [ ] **Phase 3** — Hybrid retrieval (BM25 + dense) + reranking.
 - [ ] **Phase 4** — Reachability reasoning (headline feature) + clean-report short-circuit.
 - [ ] **Phase 5** — Remediation + breakage assessment; Track 3 eval.
