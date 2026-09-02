@@ -11,3 +11,6 @@
 {"id": "q-jinja2-fixver",   "query": "Jinja2 release that fixed the xmlattr attribute injection vulnerability", "gold_chunk_id": "chlog-jinja2-3.1.4", "category": "changelog"}
 {"id": "q-pyyaml-safe",     "query": "PyYAML version that made load default to the safe FullLoader", "gold_chunk_id": "chlog-pyyaml-5.4", "category": "changelog"}
 {"id": "q-certifi-fixver",  "query": "certifi update that removed the e-Tugra certificate from the bundle", "gold_chunk_id": "chlog-certifi-2023.07.22", "category": "changelog"}
+{"id": "q-id-cve-certifi",  "query": "CVE-2023-37920", "gold_chunk_id": "adv-certifi-cve-2023-37920", "category": "identifier"}
+{"id": "q-id-cve-jinja2",   "query": "CVE-2024-34064 advisory details", "gold_chunk_id": "adv-jinja2-cve-2024-34064", "category": "identifier"}
+{"id": "q-id-ghsa-urllib3", "query": "GHSA-g4mx-q9vg-27p4", "gold_chunk_id": "adv-urllib3-cve-2023-45803", "category": "identifier"}
