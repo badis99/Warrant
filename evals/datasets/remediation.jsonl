@@ -1,0 +1,6 @@
+{"id": "pyyaml", "package": "pyyaml", "current": "5.3", "expected_target": "5.4", "osv_ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "5.4"}]}]}
+{"id": "requests", "package": "requests", "current": "2.30.0", "expected_target": "2.31.0", "osv_ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "2.31.0"}]}]}
+{"id": "urllib3", "package": "urllib3", "current": "1.26.5", "expected_target": "1.26.18", "osv_ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "1.26.18"}]}]}
+{"id": "jinja2", "package": "jinja2", "current": "3.1.2", "expected_target": "3.1.4", "osv_ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "3.1.4"}]}]}
+{"id": "certifi", "package": "certifi", "current": "2023.5.7", "expected_target": "2023.7.22", "osv_ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "2023.7.22"}]}]}
+{"id": "setuptools", "package": "setuptools", "current": "65.5.0", "expected_target": "65.5.1", "osv_ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "65.5.1"}]}]}
