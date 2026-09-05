@@ -88,38 +88,28 @@ Every quality claim is backed by a measured eval with **hard negatives** — clo
 Point Warrant at a lockfile:
 
 ```bash
-warrant scan ./path/to/poetry.lock
+uv run python -m warrant.scan path/to/uv.lock
 ```
 
-Instead of "47 vulnerabilities," you get a ranked, cited plan:
+You get a ranked, cited plan instead of a wall of alerts. Actual output (a lockfile pinning `setuptools 65.5.0`):
 
 ```
-Warrant — remediation plan for poetry.lock
-312 packages scanned · 5 with known advisories · 3 need your attention
+Warrant — remediation plan for uv.lock
+1 package(s) affected · 0 reachable
 
-────────────────────────────────────────────────────────────────────────
-🔴  Pillow 9.2.0  →  upgrade to 9.3.0          REACHABLE · do this first
-    Why:   GHSA-xxxx is triggered via Image.open() on attacker-controlled
-           input. You call Image.open() in upload_handler.py:42.
-    Fix:   9.3.0 is the minimal safe version. Changelog shows a bug fix
-           only — no API changes. Drop-in safe.
-    Cite:  OSV: GHSA-xxxx · CVE-2022-xxxxx  |  Pillow CHANGES 9.3.0
-
-────────────────────────────────────────────────────────────────────────
-🟡  urllib3 1.26.5  →  upgrade to 1.26.18      VULNERABLE · low urgency
-    Why:   Flaw only triggers with a proxy + redirect config you don't use.
-    Fix:   1.26.18 is drop-in safe.
-    Cite:  OSV: GHSA-yyyy  |  urllib3 CHANGES 1.26.18
-
-────────────────────────────────────────────────────────────────────────
-⚪  PyYAML 5.3  (transitive, via data-toolkit)  NOT REACHABLE · no action
-    Why:   Vuln is in yaml.load() on untrusted input; data-toolkit only
-           calls yaml.safe_load(). Not exploitable in this dependency's use.
-    Cite:  OSV: GHSA-zzzz
-
-────────────────────────────────────────────────────────────────────────
-The other 44 findings: already patched or in unreachable paths. (--verbose)
+--------------------------------------------------------------------
+[UNCERTAIN]  setuptools 65.5.0  ->  upgrade to 83.0.0
+    Why:   affected; reachability uncertain. Advisories: CVE-2025-47273, CVE-2024-6345, CVE-2026-59890, CVE-2022-40897
+    Fix:   83.0.0 — drop-in (no breaking changes found in corpus)
+    Cite:  CVE-2025-47273, CVE-2024-6345, CVE-2026-59890, CVE-2022-40897
+--------------------------------------------------------------------
 ```
+
+Two things a plain scanner won't do are already visible, and both are **deterministic and exactly correct**: the safe upgrade is **83.0.0**, *not* the first fix `65.5.1` — it is the smallest version that clears **all four** advisories at once; and the eight raw OSV records (a GHSA and a PYSEC entry per CVE) have been **reconciled** into one finding with every id kept as a citation.
+
+Honest reading of the fuzzy parts: the marker reads `[UNCERTAIN]` because there is no code-usage input yet — with one, it sharpens to `[REACHABLE]` (act first) or `[NOT REACHABLE]` (flagged but not exploitable in your usage), the headline feature that scores 1.000 on the reachability gold set. And breakage is only as good as the changelog corpus, which is curated and bounded — for a package it doesn't cover (like setuptools here) it under-reports, so "no breaking changes found" means "none in the corpus," not a guarantee.
+
+The markers: `[REACHABLE]` · `[UNCERTAIN]` · `[NOT REACHABLE]`. Plain ASCII so it renders on any terminal.
 
 That is a plan you act on before lunch, instead of a list you avoid for six months.
 
@@ -325,6 +315,12 @@ cp .env.example .env          # add your ANTHROPIC_API_KEY
 
 ## Usage
 
+**Scan a lockfile from the terminal** (simplest — prints the plan, no server, no JSON):
+
+```bash
+uv run python -m warrant.scan path/to/uv.lock
+```
+
 **Run the API** (FastAPI + Uvicorn), then POST a lockfile's contents:
 
 ```bash
@@ -334,6 +330,8 @@ uv run uvicorn warrant.api:app --reload
 curl -s localhost:8000/scan -H 'content-type: application/json' \
   -d '{"lockfile": "version = 1\n[[package]]\nname = \"setuptools\"\nversion = \"65.5.0\""}'
 ```
+
+`/scan` returns JSON by default; add `?format=text` for the same human-readable plan the CLI prints. The interactive API docs are at `http://localhost:8000/docs`.
 
 **Or in Docker:**
 
