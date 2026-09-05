@@ -19,4 +19,6 @@ class WarrantState(TypedDict, total=False):
     candidates: list[VulnCandidate]
     affected: list[AffectedFinding]
     reachability: dict[str, Reachability]
+    remediation: dict[str, str | None]
+    breakage: dict[str, object]
     report: dict

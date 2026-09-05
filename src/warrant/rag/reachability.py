@@ -11,15 +11,11 @@ The LLM callable is injectable so tests run without the network.
 
 from __future__ import annotations
 
-import json
-import re
 from dataclasses import dataclass, field
 
+from warrant.rag.llm_json import parse_json_reply
+
 _VERDICTS = {"reachable", "not-reachable", "uncertain"}
-# Our schema has no nested objects, so a non-greedy {...} captures exactly one
-# JSON object. DOTALL so it can span newlines.
-_JSON_OBJECT = re.compile(r"\{.*?\}", re.DOTALL)
-_THINK = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 
 @dataclass
@@ -51,25 +47,8 @@ def _build_prompt(package: str, advisory_text: str, code_usage: str) -> str:
     )
 
 
-def _last_json_object(text: str) -> dict | None:
-    """Return the last well-formed JSON object found in `text`, or None."""
-    result = None
-    for match in _JSON_OBJECT.finditer(text):
-        try:
-            result = json.loads(match.group(0))
-        except (json.JSONDecodeError, ValueError):
-            continue
-    return result
-
-
 def _parse(raw: str) -> Reachability:
-    raw = raw or ""
-    # Reasoning models wrap analysis in <think>...</think>, which may itself
-    # contain example JSON. Prefer the answer AFTER the thinking; fall back to
-    # anything parseable in the whole reply (e.g. if the final answer was
-    # truncated by the token limit).
-    after_think = _THINK.sub("", raw)
-    data = _last_json_object(after_think) or _last_json_object(raw)
+    data = parse_json_reply(raw)
     if data is None:
         return _UNCERTAIN
 

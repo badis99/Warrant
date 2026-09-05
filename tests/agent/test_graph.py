@@ -8,6 +8,8 @@ real (offline lockfile parsing).
 from warrant.agent.graph import build_graph
 from warrant.agent.nodes import applicability_node, route_after_applicability
 from warrant.models import Package, VulnCandidate
+from warrant.rag.breakage import BreakageReport
+from warrant.rag.reachability import Reachability
 
 
 def _range(fixed: str) -> list[dict]:
@@ -52,18 +54,30 @@ def test_graph_short_circuits_to_clean_report():
     assert final["report"]["status"] == "clean"
 
 
-def test_graph_routes_to_reachability_when_affected():
+def test_graph_produces_full_report_when_affected():
     cand = _candidate("pillow", "9.2.0", "9.3.0")   # 9.2.0 < 9.3.0 -> affected
 
     def stub_reachability(state):
-        ids = [f.candidate.osv_id for f in state["affected"]]
-        return {"report": {"status": "findings", "findings": ids}}
+        return {"reachability": {
+            f.candidate.osv_id: Reachability(verdict="reachable", confidence=0.9)
+            for f in state["affected"]
+        }}
+
+    def stub_breakage(state):
+        return {"breakage": {
+            name: BreakageReport(breaking=False, notes=[], effort_hint="drop-in")
+            for name in state["remediation"]
+        }}
 
     graph = build_graph(
         query_node=lambda s: {"candidates": [cand]},
         reachability_node=stub_reachability,
+        breakage_node=stub_breakage,
     )
     final = graph.invoke({"lockfile_path": "fixtures/simple/uv.lock"})
 
     assert final["report"]["status"] == "findings"
-    assert "OSV-pillow" in final["report"]["findings"]
+    finding = final["report"]["findings"][0]
+    assert finding["package"] == "pillow"
+    assert finding["target_version"] == "9.3.0"          # deterministic remediation
+    assert finding["advisories"][0]["reachability"] == "reachable"

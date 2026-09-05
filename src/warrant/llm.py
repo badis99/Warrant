@@ -6,7 +6,7 @@ load_dotenv(".env.local")
 
 _client = Groq(api_key=os.environ["GROQ_API_KEY"])
 
-def complete(prompt: str, model: str = "qwen/qwen3.6-27b") -> str:
+def complete(prompt: str, model: str = "openai/gpt-oss-20b") -> str:
     resp = _client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}],
