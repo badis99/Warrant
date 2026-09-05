@@ -428,8 +428,3 @@ Depth on a small surface beats breadth. Supporting several ecosystems would mult
 
 Issues and pull requests are welcome. The one rule that must never be violated: **the deterministic core (`src/warrant/core/`) must never import or call an LLM.** Version-range decisions stay deterministic.
 
----
-
-## License
-
-[MIT]
