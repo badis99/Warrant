@@ -13,7 +13,10 @@ import os
 import tempfile
 
 from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
+
+from warrant.render import render_report
 
 
 class ScanRequest(BaseModel):
@@ -49,8 +52,11 @@ def create_app(scan_fn=_default_scan, enable_caching: bool = True) -> FastAPI:
         return {"status": "ok"}
 
     @app.post("/scan")
-    def scan(request: ScanRequest) -> dict:
-        return scan_fn(request.lockfile)
+    def scan(request: ScanRequest, format: str = "json"):
+        report = scan_fn(request.lockfile)
+        if format == "text":
+            return PlainTextResponse(render_report(report))
+        return report
 
     return app
 
