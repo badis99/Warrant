@@ -59,9 +59,24 @@ def _candidate_from_vuln(vuln: dict, package: Package) -> VulnCandidate | None:
     )
 
 
+# Optional process-wide cache of raw OSV responses, keyed by package name.
+# The version-independent /v1/query result is cached; candidates are rebuilt
+# per call. Enabled by the API at startup; off by default so tests are isolated.
+_module_cache = None
+
+
+def enable_cache(ttl_seconds: float = 21600) -> None:
+    """Turn on response caching (default TTL 6h)."""
+    global _module_cache
+    from core.cache import TTLCache
+
+    _module_cache = TTLCache(ttl_seconds)
+
+
 def query_vulns(
     packages: list[Package],
     client: httpx.Client | None = None,
+    cache=None,
 ) -> list[VulnCandidate]:
     """Query OSV for every package and return the advisory candidates found.
 
@@ -69,25 +84,34 @@ def query_vulns(
         packages: packages to look up (only ecosystem + name are sent).
         client: an httpx.Client to use; if None, one is created and closed.
             Injecting a client lets tests replay recorded responses.
+        cache: a TTLCache for raw responses; falls back to the process cache
+            (if enabled). Caches by package name; empty results are cached too.
 
     Returns:
         One VulnCandidate per (package, matching OSV record). An empty list for
         a package means "no record found", not "safe".
     """
+    cache = cache if cache is not None else _module_cache
     own_client = client is None
     client = client or httpx.Client(timeout=_DEFAULT_TIMEOUT)
     try:
         candidates: list[VulnCandidate] = []
         for package in packages:
-            response = client.post(
-                OSV_QUERY_URL,
-                json={"package": {
-                    "ecosystem": package.ecosystem,
-                    "name": package.name,
-                }},
-            )
-            response.raise_for_status()
-            for vuln in response.json().get("vulns", []):
+            key = f"{package.ecosystem}:{_normalize(package.name)}"
+            vulns = cache.get(key) if cache is not None else None
+            if vulns is None:
+                response = client.post(
+                    OSV_QUERY_URL,
+                    json={"package": {
+                        "ecosystem": package.ecosystem,
+                        "name": package.name,
+                    }},
+                )
+                response.raise_for_status()
+                vulns = response.json().get("vulns", [])
+                if cache is not None:
+                    cache.set(key, vulns)
+            for vuln in vulns:
                 candidate = _candidate_from_vuln(vuln, package)
                 if candidate is not None:
                     candidates.append(candidate)

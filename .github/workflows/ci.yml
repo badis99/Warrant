@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-and-gate:
+    runs-on: ubuntu-latest
+    env:
+      # llm.py builds a Groq client at import (no network call); a dummy value
+      # lets imports succeed. All LLM calls in tests are mocked.
+      GROQ_API_KEY: dummy-key-for-ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv (manages Python 3.14 + deps)
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Unit tests + architecture lint
+        run: uv run pytest -q
+
+      # The eval gate: fail the build if a deterministic quality metric drops.
+      # This is the "bring engineering discipline to ML" signal — you cannot
+      # merge a change that silently makes the tool worse.
+      - name: Eval gate
+        run: uv run python -m evals.gate

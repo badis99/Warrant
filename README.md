@@ -296,6 +296,8 @@ The eval harness is built **before** any component is improved. A deliberately n
 
 > **On remediation & the report (Phase 5):** the minimal safe upgrade is computed **deterministically** (smallest published fix that clears every advisory, verified by the PEP 440 resolver) — **target accuracy 1.000** on a 6-CVE set (`uv run python -m evals.remediation_eval`). Breaking-change assessment is RAG over changelogs, every claim required to trace to the text. A deliberate design choice: the final report is assembled **in code, not by an LLM** — every value (target, breakage notes, citations) is already computed, so composing it deterministically guarantees no dropped or hallucinated citation; the LLM stays confined to the reachability and breakage judgments. Duplicate OSV records (a GHSA and a PYSEC entry for one CVE) are reconciled before analysis, which also cuts redundant LLM calls. **The full pipeline runs live end-to-end** (parse → OSV → reconcile → applicability → reachability → remediation → breakage → cited report) on `openai/gpt-oss-20b`. Deployment note worth keeping: an earlier *reasoning* model (qwen3.6) exceeded Groq's free-tier output cap (1000 tokens/min) because of verbose `<think>` output — switching to a compact instruction model plus CVE reconciliation (fewer calls) brought it under budget, and Phase 7's response caching (advisories change slowly) will remove the constraint entirely. **Track 3 (LLM-as-judge) status:** the "correct target version" dimension is checked deterministically (stronger than a judge); the noisy LLM-judge for *breakage grounding / hallucinated-CVE* is deferred until an LLM budget supports it — judge evals are noisy (verbosity bias, self-agreement), so pairing them with a human gold set is required, not optional.
 
+> **On deployment (Phase 7):** the pipeline is served by a **FastAPI** app (`POST /scan`), containerized with a **Dockerfile**, and fronted by a **TTL cache** for OSV responses — advisories change slowly, so a short time-based TTL is a sound, simple invalidation strategy (event-based invalidation would be more precise but needs a change feed; in production the cache would be disk- or Redis-backed to survive restarts and be shared across workers). The flagship signal is the **CI eval gate**: a GitHub Action runs the unit tests *and* the deterministic evals on every push and **fails the build if a quality metric regresses** — you cannot merge a change that silently makes the tool worse. It gates on the deterministic evals only (version math, remediation targets), so CI stays fast and needs no LLM budget; the LLM-dependent evals are run with a budget out of band. An **architecture lint** test enforces the core rule in CI (`src/core/` may never import an LLM). **Tracing** is documented rather than wired to an external collector: **LangSmith** is turnkey for LLM traces (per-call latency/token cost, one env var) but ties you to a hosted vendor; **OpenTelemetry** is vendor-neutral and integrates with existing infra but needs a collector and more setup — for a portfolio the LangSmith path is the fastest to show per-query latency and cost, and LangGraph emits the callbacks it needs.
+
 > **\*On reachability (Phase 4):** the LLM reads an advisory's *condition* against how the code uses the package and judges **reachable / not-reachable / uncertain** with a confidence and cited evidence — scoped honestly as *advisory-condition reasoning*, not a static-analysis proof. On the 16-case hand-labeled gold set it scores **1.000** with good calibration (mean confidence 0.81 when correct; model: `openai/gpt-oss-20b`). **Read that 100% with care:** the set is small and its cases are relatively clear-cut, so it demonstrates competence on clear conditions, not robustness on ambiguous ones — a harder, larger, adversarial gold set is the honest next step. Reachability has **no free ground truth** (unlike Tracks 1–2), so these labels are hand-authored judgments; see `docs/eval-labeling-notes.md`. A build note: the reasoning model wraps output in `<think>…</think>`, which broke JSON parsing until the extractor was fixed to read the answer after the thinking — the first eval run scored a misleading 0.250 (all parse-failure fallbacks) before that fix. Run with `uv run python -m evals.reachability_eval`.
 
 > **On the fact layer (Phase 2):** advisory ranges are now fetched from **live OSV.dev** (recorded as fixtures for reproducible tests) instead of hand-written, and the transitive dependency graph is reconstructed from the lockfile. Binary F1 stays 1.000, but the graph lifts **exact 3-way accuracy** (not-affected / affected / affected-transitively) from **0.938 → 1.000**: the one indirect dependency is now labeled `affected-transitively` rather than merely `affected`. The version verdict still comes from our own PEP 440 resolver — OSV supplies facts, not judgments.
@@ -317,24 +319,37 @@ uv sync                       # create the environment and install deps
 cp .env.example .env          # add your ANTHROPIC_API_KEY
 ```
 
-**Requirements:** Python 3.11+. A hosted LLM API key (reasoning/judge nodes). Embeddings run locally (no key needed).
+**Requirements:** Python 3.14. A Groq API key in `.env.local` as `GROQ_API_KEY` (LLM judgment nodes). Embeddings and BM25 run locally (no key needed).
 
 ---
 
 ## Usage
 
+**Run the API** (FastAPI + Uvicorn), then POST a lockfile's contents:
+
 ```bash
-# Scan a lockfile and print a remediation plan
-warrant scan ./poetry.lock
+uv run uvicorn warrant.api:app --reload
+```
+```bash
+curl -s localhost:8000/scan -H 'content-type: application/json' \
+  -d '{"lockfile": "version = 1\n[[package]]\nname = \"setuptools\"\nversion = \"65.5.0\""}'
+```
 
-# Show all findings, including the safe/unreachable ones
-warrant scan ./poetry.lock --verbose
+**Or in Docker:**
 
-# Emit machine-readable output
-warrant scan ./poetry.lock --format json
+```bash
+docker build -t warrant .
+docker run -e GROQ_API_KEY=$GROQ_API_KEY -p 8000:8000 warrant
+```
 
-# Run the evaluation harness and render the before/after table
-warrant eval --track all
+**Run the evals** (each prints its metrics):
+
+```bash
+uv run python -m evals.track1_retrieval        # retrieval MRR (naive vs hybrid)
+uv run python -m evals.track2_classification   # deterministic 3-way classification
+uv run python -m evals.remediation_eval        # deterministic minimal-safe-version
+uv run python -m evals.reachability_eval       # reachability accuracy (uses the LLM)
+uv run python -m evals.gate                    # CI eval gate: non-zero exit on regression
 ```
 
 ---
@@ -391,7 +406,7 @@ Each phase ends by re-measuring and adding a row to the before/after table.
 - [x] **Phase 4** — Reachability reasoning (headline feature): 1.000 on the hand-labeled gold set; LangGraph pipeline assembled (`src/warrant/agent/`) with the conditional clean-report short-circuit edge; runs end-to-end (parse → OSV → applicability → reachability → report).
 - [x] **Phase 5** — Deterministic minimal-safe-version remediation (target accuracy 1.000), RAG breakage assessment, CVE reconciliation, and a deterministically-composed cited report wired into the graph. Track 3 LLM-judge deferred (free-tier LLM budget); target-version dimension checked deterministically instead.
 - [ ] **Phase 6** — Multi-hop evidence fetch *(only if the eval shows it's needed)*.
-- [ ] **Phase 7** — Deployment: FastAPI, Docker, caching, tracing, CI eval gate.
+- [x] **Phase 7** — Deployment: **FastAPI** service (`warrant.api`), **Docker** image, **TTL response caching** for OSV, a **CI eval gate** (GitHub Actions) failing the build on any deterministic-metric regression, and an **architecture lint** test asserting `src/core/` never imports an LLM. Tracing documented (see note).
 
 ---
 
