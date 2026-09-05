@@ -284,15 +284,17 @@ The eval harness is built **before** any component is improved. A deliberately n
 
 | Component added | Boundary acc. | Retrieval MRR | Reachability acc. | F1 |
 | --- | --- | --- | --- | --- |
-| Baseline (LLM version check + plain vector RAG) | 1.000 | **0.875** | _tbd_ | **0.360** |
+| Baseline (LLM version check + plain vector RAG) | 1.000 | **0.875** | — | **0.360** |
 | + Deterministic PEP 440 resolver | 1.000 | — | — | **1.000** |
 | + Full fact layer (OSV + transitive graph) | — | — | — | 1.000 |
-| + Hybrid retrieval (dense + BM25, RRF) | — | **0.906** | _tbd_ | — |
-| + Reachability reasoning | — | — | _tbd_ | _tbd_ |
+| + Hybrid retrieval (dense + BM25, RRF) | — | **0.906** | — | — |
+| + Reachability reasoning | — | — | **1.000\*** | — |
 
 *(Numbers filled in as each phase lands — see the [Roadmap](#roadmap).)*
 
 > **On the version-math result (Phase 1):** the naive baseline, which asks the LLM to decide affectedness, scores **F1 0.360** — it systematically *under-flags*, missing 7 of 8 genuinely-affected packages (recall 0.500). The deterministic PEP 440 resolver scores **F1 1.000**. Note that *boundary accuracy is 1.000 for both*: the LLM "passes" the exact-fixed-version cases only because it defaults toward "not-affected", so a metric that rewards saying-safe is gamed by its own failure — F1/recall is what reveals it. In security, silently missing real vulnerabilities is the worst outcome, and it is exactly what removing the LLM from version math eliminates. Single run, temperature 0; reproduce with `uv run python -m evals.track2_classification [naive]`.
+
+> **\*On reachability (Phase 4):** the LLM reads an advisory's *condition* against how the code uses the package and judges **reachable / not-reachable / uncertain** with a confidence and cited evidence — scoped honestly as *advisory-condition reasoning*, not a static-analysis proof. On the 16-case hand-labeled gold set it scores **1.000** with good calibration (mean confidence 0.85 when correct). **Read that 100% with care:** the set is small and its cases are relatively clear-cut, so it demonstrates competence on clear conditions, not robustness on ambiguous ones — a harder, larger, adversarial gold set is the honest next step. Reachability has **no free ground truth** (unlike Tracks 1–2), so these labels are hand-authored judgments; see `docs/eval-labeling-notes.md`. A build note: the reasoning model wraps output in `<think>…</think>`, which broke JSON parsing until the extractor was fixed to read the answer after the thinking — the first eval run scored a misleading 0.250 (all parse-failure fallbacks) before that fix. Run with `uv run python -m evals.reachability_eval`.
 
 > **On the fact layer (Phase 2):** advisory ranges are now fetched from **live OSV.dev** (recorded as fixtures for reproducible tests) instead of hand-written, and the transitive dependency graph is reconstructed from the lockfile. Binary F1 stays 1.000, but the graph lifts **exact 3-way accuracy** (not-affected / affected / affected-transitively) from **0.938 → 1.000**: the one indirect dependency is now labeled `affected-transitively` rather than merely `affected`. The version verdict still comes from our own PEP 440 resolver — OSV supplies facts, not judgments.
 
@@ -384,7 +386,7 @@ Each phase ends by re-measuring and adding a row to the before/after table.
 - [x] **Phase 1** — Deterministic PEP 440 resolver. *(The killer artifact.)* Baseline F1 0.360 → 1.000.
 - [x] **Phase 2** — Full fact layer: OSV client + transitive graph + deps.dev fallback. Exact 3-way accuracy 0.938 → 1.000.
 - [x] **Phase 3** — Hybrid retrieval (BM25 + dense, RRF). Retrieval MRR 0.875 → 0.906; identifier-lookup MRR 0.833 → 1.000. Reranking deliberately deferred (see eval note).
-- [ ] **Phase 4** — Reachability reasoning (headline feature) + clean-report short-circuit.
+- [x] **Phase 4** — Reachability reasoning (headline feature): 1.000 on the hand-labeled gold set; LangGraph pipeline assembled (`src/warrant/agent/`) with the conditional clean-report short-circuit edge; runs end-to-end (parse → OSV → applicability → reachability → report).
 - [ ] **Phase 5** — Remediation + breakage assessment; Track 3 eval.
 - [ ] **Phase 6** — Multi-hop evidence fetch *(only if the eval shows it's needed)*.
 - [ ] **Phase 7** — Deployment: FastAPI, Docker, caching, tracing, CI eval gate.
