@@ -432,4 +432,4 @@ Issues and pull requests are welcome. The one rule that must never be violated: 
 
 ## License
 
-[MIT](LICENSE) © 2026 Badis Bouali
+[MIT]
